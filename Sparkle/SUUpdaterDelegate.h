@@ -293,6 +293,15 @@ SU_EXPORT extern NSString *const SUUpdaterAppcastNotificationKey;
 - (nullable NSString *)pathToRelaunchForUpdater:(SUUpdater *)updater;
 
 /*!
+Returns a script to be ran with administrative privileges after the update has been completed.
+
+The default is `nil`.
+
+\param updater The SUUpdater instance.
+*/
+- (nullable NSString *)administrativeScriptToRunPostInstallForUpdater:(SUUpdater *)updater;
+
+/*!
  Called before an updater shows a modal alert window,
  to give the host the opportunity to hide attached windows that may get in the way.
  

@@ -17,6 +17,7 @@
 @property (nonatomic, readonly, copy) NSString *packagePath;
 @property (nonatomic, readonly, copy) NSString *installationPath;
 @property (nonatomic, readonly, copy) NSString *fileOperationToolPath;
+@property (nonatomic, retain) SUFileManager *fileManager;
 
 @end
 
@@ -25,6 +26,7 @@
 @synthesize packagePath = _packagePath;
 @synthesize installationPath = _installationPath;
 @synthesize fileOperationToolPath = _fileOperationToolPath;
+@synthesize fileManager = _fileManager;
 
 - (instancetype)initWithPackagePath:(NSString *)packagePath installationPath:(NSString *)installationPath fileOperationToolPath:(NSString *)fileOperationToolPath
 {
@@ -33,6 +35,7 @@
         _packagePath = [packagePath copy];
         _installationPath = [installationPath copy];
         _fileOperationToolPath = [fileOperationToolPath copy];
+        _fileManager = [SUFileManager fileManagerWithAuthorizationToolPath:_fileOperationToolPath];
     }
     return self;
 }
@@ -44,9 +47,7 @@
 
 - (BOOL)performFinalInstallationProgressBlock:(nullable void(^)(double))progressBlock error:(NSError * __autoreleasing *)error
 {
-    SUFileManager *fileManager = [SUFileManager fileManagerWithAuthorizationToolPath:self.fileOperationToolPath];
-    
-    return [fileManager executePackageAtURL:[NSURL fileURLWithPath:self.packagePath] progressBlock:progressBlock error:error];
+    return [self.fileManager executePackageAtURL:[NSURL fileURLWithPath:self.packagePath] progressBlock:progressBlock error:error];
 }
 
 - (BOOL)canInstallSilently

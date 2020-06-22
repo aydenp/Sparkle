@@ -1005,6 +1005,11 @@ static BOOL SUMakeRefFromURL(NSURL *url, FSRef *ref, NSError **error) {
     return success;
 }
 
+- (AuthorizationRef)acquireAuthorizationReferenceWithError:(NSError * __autoreleasing *)error {
+    [self _acquireAuthorizationWithError:error];
+    return _auth;
+}
+
 @end
 
 #pragma clang diagnostic pop

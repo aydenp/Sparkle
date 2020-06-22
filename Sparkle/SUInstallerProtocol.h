@@ -7,6 +7,7 @@
 //
 
 #import <Foundation/Foundation.h>
+#import "SUFileManager.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -30,6 +31,9 @@ NS_ASSUME_NONNULL_BEGIN
 // The destination and installation path of the bundle being updated
 // Should be thread safe
 - (NSString *)installationPath;
+
+@optional
+- (nullable SUFileManager *)fileManager;
 
 @end
 

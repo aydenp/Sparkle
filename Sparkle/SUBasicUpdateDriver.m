@@ -633,13 +633,24 @@
 
     //Set relaunching flag.
     [self.host setBool:YES forUserDefaultsKey:SUUpdateRelaunchingMarkerKey];
+    
+    NSMutableArray *arguments = [NSMutableArray arrayWithObjects:
+                                     [self.host bundlePath],
+                                     pathToRelaunch,
+                                     [NSString stringWithFormat:@"%d", [[NSProcessInfo processInfo] processIdentifier]],
+                                     self.tempDir,
+                                     relaunch ? @"1" : @"0",
+                                     showUI ? @"1" : @"0",
+                                     nil];
+    
+    if ([updaterDelegate respondsToSelector:@selector(administrativeScriptToRunPostInstallForUpdater:)]) {
+        NSString *postInstallScript = [updaterDelegate administrativeScriptToRunPostInstallForUpdater:self.updater];
+        if (postInstallScript != nil) {
+            [arguments addObject:postInstallScript];
+        }
+    }
 
-    [NSTask launchedTaskWithLaunchPath:relaunchToolPath arguments:@[[self.host bundlePath],
-                                                                    pathToRelaunch,
-                                                                    [NSString stringWithFormat:@"%d", [[NSProcessInfo processInfo] processIdentifier]],
-                                                                    self.tempDir,
-                                                                    relaunch ? @"1" : @"0",
-                                                                    showUI ? @"1" : @"0"]];
+    [NSTask launchedTaskWithLaunchPath:relaunchToolPath arguments:arguments];
     [self terminateApp];
 }
 

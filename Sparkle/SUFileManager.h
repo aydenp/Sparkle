@@ -156,6 +156,12 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (BOOL)executePackageAtURL:(NSURL *)packageURL progressBlock:(nullable void(^)(double))progressBlock error:(NSError *_Nullable*_Nullable)error;
 
+/**
+ Returns the file manager's authorization reference, acquiring one if it doesn't exist.
+ * @param error If an error occurs, upon returns contains an NSError object that describes the problem. If you are not interested in possible errors, you may pass in NULL.
+ */
+- (AuthorizationRef)acquireAuthorizationReferenceWithError:(NSError *_Nullable*_Nullable)error;
+
 NS_ASSUME_NONNULL_END
 
 @end

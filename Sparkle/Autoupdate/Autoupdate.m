@@ -1,6 +1,7 @@
 #import <Cocoa/Cocoa.h>
 #import "SULocalizations.h"
 #import "SUErrors.h"
+#import "SUFileManager.h"
 #import "SUInstaller.h"
 #import "SUHost.h"
 #import "SUStandardVersionComparator.h"
@@ -32,8 +33,9 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
  * updateFolderPath - path to update folder (i.e, temporary directory containing the new update)
  * shouldRelaunch - indicates if the new installed app should re-launched
  * shouldShowUI - indicates if we should show the status window when installing the update
+ * postInstallScript - a script to be run as administrator after the install completes
  */
-- (instancetype)initWithHostPath:(NSString *)hostPath relaunchPath:(NSString *)relaunchPath parentProcessId:(pid_t)parentProcessId updateFolderPath:(NSString *)updateFolderPath shouldRelaunch:(BOOL)shouldRelaunch shouldShowUI:(BOOL)shouldShowUI;
+- (instancetype)initWithHostPath:(NSString *)hostPath relaunchPath:(NSString *)relaunchPath parentProcessId:(pid_t)parentProcessId updateFolderPath:(NSString *)updateFolderPath shouldRelaunch:(BOOL)shouldRelaunch shouldShowUI:(BOOL)shouldShowUI postInstallScript:(nullable NSString *)postInstallScript;
 
 @end
 
@@ -47,6 +49,7 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
 @property (nonatomic, copy) NSString *relaunchPath;
 @property (nonatomic, assign) BOOL shouldRelaunch;
 @property (nonatomic, assign) BOOL shouldShowUI;
+@property (nonatomic, copy, nullable) NSString *postInstallScript;
 
 @property (nonatomic, assign) BOOL isTerminating;
 
@@ -62,8 +65,9 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
 @synthesize shouldRelaunch = _shouldRelaunch;
 @synthesize shouldShowUI = _shouldShowUI;
 @synthesize isTerminating = _isTerminating;
+@synthesize postInstallScript = _postInstallScript;
 
-- (instancetype)initWithHostPath:(NSString *)hostPath relaunchPath:(NSString *)relaunchPath parentProcessId:(pid_t)parentProcessId updateFolderPath:(NSString *)updateFolderPath shouldRelaunch:(BOOL)shouldRelaunch shouldShowUI:(BOOL)shouldShowUI
+- (instancetype)initWithHostPath:(NSString *)hostPath relaunchPath:(NSString *)relaunchPath parentProcessId:(pid_t)parentProcessId updateFolderPath:(NSString *)updateFolderPath shouldRelaunch:(BOOL)shouldRelaunch shouldShowUI:(BOOL)shouldShowUI postInstallScript:(nullable NSString *)postInstallScript
 {
     if (!(self = [super init])) {
         return nil;
@@ -76,6 +80,7 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
     self.updateFolderPath = updateFolderPath;
     self.shouldRelaunch = shouldRelaunch;
     self.shouldShowUI = shouldShowUI;
+    self.postInstallScript = postInstallScript;
     
     return self;
 }
@@ -106,10 +111,15 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
 
 - (void)showError:(NSError *)error
 {
+    [self showErrorMessage:error.localizedDescription];
+}
+
+- (void)showErrorMessage:(NSString *)errorMessage
+{
     if (self.shouldShowUI) {
         NSAlert *alert = [[NSAlert alloc] init];
         alert.messageText = @"";
-        alert.informativeText = [NSString stringWithFormat:@"%@", [error localizedDescription]];
+        alert.informativeText = [NSString stringWithFormat:@"%@", errorMessage];
         [alert runModal];
     }
 }
@@ -141,6 +151,28 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
     }
     
     dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+        AuthorizationRef auth = NULL;
+        if (self.postInstallScript) {
+            SUFileManager *fileManager = ([installer respondsToSelector:@selector(fileManager)] ? installer.fileManager : nil);
+            if (!fileManager) fileManager = [SUFileManager defaultManager];
+            
+            NSError *error;
+            auth = [fileManager acquireAuthorizationReferenceWithError:&error];
+            if (error != nil || auth == NULL) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    if (error) {
+                        SULog(SULogLevelError, @"Failed to get post-install authorization reference. Error: %@", [error localizedDescription]);
+                        [self showError:error];
+                    } else {
+                        SULog(SULogLevelError, @"Failed to get post-install authorization reference. Unknown error.");
+                        [self showErrorMessage:@"The update could not be completed due to an authorization error."];
+                    }
+                    exit(EXIT_FAILURE);
+                });
+                return;
+            }
+        }
+        
         NSError *initialInstallationError = nil;
         if (![installer performInitialInstallation:&initialInstallationError]) {
             SULog(SULogLevelError, @"Failed to perform initial installation with error: %@", initialInstallationError);
@@ -168,6 +200,24 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
                 exit(EXIT_FAILURE);
             });
             return;
+        }
+        
+        if (self.postInstallScript && auth != NULL) {
+            // Run our post-install scripts
+            char *arguments[] = { "-c", strdup(self.postInstallScript.UTF8String), NULL };
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+            OSStatus status = AuthorizationExecuteWithPrivileges(auth, "/bin/bash", kAuthorizationFlagDefaults, arguments, NULL);
+#pragma clang diagnostic pop
+            if (status != errAuthorizationSuccess) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                    SULog(SULogLevelError, @"Failed to perform post-install script. Error code: %i", status);
+                    NSError *error = [NSError errorWithDomain:SUSparkleErrorDomain code:SUAuthenticationFailure userInfo:@{ NSLocalizedDescriptionKey:[NSString stringWithFormat:@"Failed to run post-install tool %@ (error code %d).", self.postInstallScript, (int)status] }];
+                    [self showError:error];
+                    exit(EXIT_FAILURE);
+                });
+                return;
+            }
         }
         
         NSString *installationPath = [installer installationPath];
@@ -233,7 +283,7 @@ int main(int __unused argc, const char __unused *argv[])
     @autoreleasepool
     {
         NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
-        if (args.count < 5 || args.count > 7) {
+        if (args.count < 5 || args.count > 8) {
             return EXIT_FAILURE;
         }
         
@@ -249,7 +299,8 @@ int main(int __unused argc, const char __unused *argv[])
                                                             parentProcessId:[[args objectAtIndex:3] intValue]
                                                            updateFolderPath:[args objectAtIndex:4]
                                                              shouldRelaunch:(args.count > 5) ? [[args objectAtIndex:5] boolValue] : YES
-                                                               shouldShowUI:shouldShowUI];
+                                                               shouldShowUI:shouldShowUI
+                                                          postInstallScript:[args objectAtIndex:7]];
         [application setDelegate:appInstaller];
         [application run];
     }
