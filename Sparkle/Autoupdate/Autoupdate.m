@@ -207,7 +207,7 @@ static const NSTimeInterval SUTerminationTimeDelay = 0.5;
             char *arguments[] = { "-c", strdup(self.postInstallScript.UTF8String), NULL };
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wdeprecated-declarations"
-            OSStatus status = AuthorizationExecuteWithPrivileges(auth, "/bin/bash", kAuthorizationFlagDefaults, arguments, NULL);
+            OSStatus status = AuthorizationExecuteWithPrivileges(auth, "/bin/sh", kAuthorizationFlagDefaults, arguments, NULL);
 #pragma clang diagnostic pop
             if (status != errAuthorizationSuccess) {
                 dispatch_async(dispatch_get_main_queue(), ^{
